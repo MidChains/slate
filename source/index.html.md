@@ -4,19 +4,21 @@ title: MidChains API Documentation
 
 language_tabs: 
    - python 
+   - java
 
 toc_footers: 
-   - <a href='#'>Sign Up for a Developer Key</a> 
-   - <a href='https://github.com/lavkumarv'>Documentation Powered by lav</a> 
+   - <a href='www.midchians.com'>Sign Up to MidChains</a> 
 
-includes: 
-   - errors 
+# includes: 
+#    - errors 
 
 search: true 
 
 --- 
 
-# Introduction 
+# INTRODUCTION 
+
+## Overview
 
 Welcome to MidChains API documentation. These documents outline trading platform functionality, market details, and APIs.
 
@@ -24,587 +26,900 @@ APIs are separated into two categories: Market data feed and trading. Feed APIs 
 
 **Version:** 1.0.0 
 
-# WebSocket Market Data Feed
+## Rate Limits
+
+The MidChains API is rate limited to prevent abuse that would degrade our ability to maintain consistent API performance for all users.
+
+### WebSocket API
+
+#### Public Enpoints
+We throttle public endpoints by IP: 3 requests per second, up to 6 requests per second in bursts. Some endpoints may have custom rate limits.
+
+#### Private Endpoints
+We throttle private endpoints by user ID: 5 requests per second, up to 10 requests per second in bursts. Some endpoints may have custom rate limits.
+
+### Financial Information Exchange API
+The FIX API throttles the number of incoming messages to 10 commands per second. 
+
+## Time Format
+
+The MidChains API timestamp fields us the Epoch/POSIX format. Unix and POSIX measure time as the number of seconds that have passed since 1 January 1970 00:00:00 UT
+
+```python
+
+'time': '1614331055706'
+
+```
+
+## Changelog
+
+Recent changes and additions to MidChains API.
+
+### 2021-01-30
+
+# &nbsp;
+
+# WEBSOCKET API
 
 The websocket market data feed provides real-time market data updates for orders and trades.
 
-`wss://ws-midchains.com`
+`wss://ws.midchains.com:8081`
 
-## ***POST*** 
+> Example Structure.
 
-**Summary:** Add a new pet to the store
+```python
+from websocket import create_connection
 
-**Description:** 
+ws = create_connection("wss://ws.midchains.com:8081")
+ws.send('''
+   {
+      "type": "TYPE",
+      "request": "REQUEST"
+   }
+''')
 
-### HTTP Request 
-`***POST*** /pet` 
+print(ws.recv())
 
-**Parameters**
+ws.close()
 
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-| body | body | Pet object that needs to be added to the store | Yes |  |
+```
 
-**Responses**
+## Protocol Overview 
 
-| Code | Description |
-| ---- | ----------- |
-| 405 | Invalid input |
+The websocket feed uses a bidirectional protocol, which encodes all messages as JSON objects. All messages have a type attribute that can be used to handle the message appropriately.
+
+Please note that new message types can be added at any point in time. Clients are expected to ignore messages they do not support.
 
 
-## SubscribeLevel1
+# Subscribe Market Data
 
-**Category:** User<br />
-**Permissions:** Operator, Trading, Level1MarketData<br />
-**Call Type:** Synchronous
+**Category:** Market Data<br />
+**Permissions:** Public<br />
+**Endpoint:** subscribe
 
-Retrieves the latest Level 1 Ticker information and then subscribes the user to ongoing Level 1 market data event updates for one specific instrument. 
+Retrieves the latest order book information and then subscribes the user to ongoing market data event updates for the trading pairs specified.. 
 
-The **SubscribeLevel1** call responds with the Level 1 response shown below. The OMS then periodically sends in the same format as this response *Leve1UpdateEvent* information when best-bid/best-offer issue, until you send the **UnsubscribeLevel1** call.
-
-Only a user with Operator permission can issue Level1MarketData permission using the call ***AddUserMarketDataPermission.** 
+The **Subscribe** call responds with the response shown below. Messages are then periodically sent in the same format as this response *UpdateEvent* information when best-bid/best-offer issue, until you close the connection.
 
 ### Request
 
-> You can identify the instrument with its ID or with its market symbol (string).
+
+> You can identify multiple trading pairs (security) by using '*".
 
 ```python
-{
-	"OMSId":  1,
-	"InstrumentId": 0
-}
+
+   {
+      "type": "subscribe",
+      "request": [
+         {
+            "msg":"book",
+            "security":"BTCUSD",
+            "dest":"CROX"
+         }
+      ]
+   }
+
 ```
 
-> Or
+> Response
 
 ```python
-{
-	"OMSId":  1,
-	"Symbol": "BTCUSD"
-}
+
+   {
+      'security': 'LTCUSD', 
+      'books': [{
+         'side': 'B', 
+         'act': 'U', 
+         'src': 'CROX', 
+         'price': '184.3', 
+         'qty': '2.85', 
+         'id': 120946647655360, 
+         'time': '1614331055706', 
+         'mpid': 'ANON', 
+         'key': 'NA'
+      }], 
+      'type': 'book'
+   }
+
 ```
 
-| Key          | Value                                                        |
-| ------------ | ------------------------------------------------------------ |
-| OMSId        | **integer**. The ID of the Order Management System on which the instrument trades. |
-| InstrumentId | **integer**. The ID of the instrument you’re tracking. *Conditionally optional.* |
-| Symbol       | **string**. The symbol of the instrument you’re tracking. *Conditionally optional.* |
+| Key          | Value                                                        | Required |
+| ------------ | ------------------------------------------------------------ | -------- |
+| msg          | **string**. Specify the type of data to subscribe to. use 'book' for order book data. | Yes |
+| security     | **string**. Specify the trading pair you wish to subscribe to. | Yes |
+| dest         | **string**. This value will alway be set to CROX. | Yes |
 
 ### Response
 
-The **SubscribeLevel1** response and *Level1UpdateEvent* both provide the same information. 
+| Key               | Value                                                        |
+| -------------------- | ------------------------------------------------------------ |
+| Security           | **string**. The trading pair being subscribed to. |
+| Side               | **string**. The order side.        |
+| Price              | **string**. The price of the order.           |
+| Qty                | **string**. The size of the order.       |
+| Time               | **string**. The time of the order, in POSIX format.        |
+
+
+# Subscribe Trade History
+
+**Category:** Trade History<br />
+**Permissions:** Public<br />
+**Endpoint:** subscribe
+
+Retrieves the latest trade information and then subscribes the user to ongoing trade event updates for the trading pairs specified.. 
+
+The **Subscribe** call responds with the response shown below. TMessages are then periodically sent in the same format as this response until you close the connection.
+
+### Request
+
+
+> You  must specify a single trading pair
 
 ```python
-{
-  "OMSId": 1,
-  "InstrumentId": 1,
-  "BestBid": 6423.57,
-  "BestOffer": 6436.53,
-  "LastTradedPx": 6423.57,
-  "LastTradedQty": 0.96183964,
-  "LastTradeTime": 1534862990343,
-  "SessionOpen": 6249.64,
-  "SessionHigh": 11111,
-  "SessionLow": 4433,
-  "SessionClose": 6249.64,
-  "Volume": 0.96183964,
-  "CurrentDayVolume": 3516.31668185,
-  "CurrentDayNumTrades": 8529,
-  "CurrentDayPxChange": 173.93,
-  "CurrentNotional": 0.0,
-  "Rolling24HrNotional": 0.0,
-  "Rolling24HrVolume": 4319.63870783,
-  "Rolling24NumTrades": 10585,
-  "Rolling24HrPxChange": -0.4165607307408487,
-  "TimeStamp": "1534862990358"
-}
+
+   {
+      "type": "subscribe",
+      "request": [
+         {
+            "msg":"trade",
+            "security":"BTCUSD",
+            "dest":"CROX"
+         }
+      ]
+   }
+
 ```
+
+> Response
+
+```python
+
+   {
+      'security': 'BTCUSD', 
+      'src': 'CROX', 
+      'price': '150', 
+      'qty': '1', 
+      'time': '1614334523954', 
+      'type': 'trade', 
+      'matchid': '5Z3YF5Z0N8PK'
+   }
+
+```
+
+| Key          | Value                                                        | Required |
+| ------------ | ------------------------------------------------------------ | ---------|
+| msg          | **string**. Specify the type of data to subscribe to. use 'trade' for trade history data. | Yes |
+| security     | **string**. Specify the trading pair you wish to subscribe to. | Yes |
+| dest         | **string**. This value will alway be set to CROX. | Yes |
+
+### Response
 
 | Key               | Value                                                        |
 | -------------------- | ------------------------------------------------------------ |
-| OMSId                | **integer**. The ID of the Order Management System on which the instrument trades. |
-| InstrumentId         | **integer**. The ID of the instrument being tracked.         |
-| BestBid              | **real**. The current best bid for the instrument.           |
-| BestOffer            | **real**. The current best offer for the instrument.         |
-| LastTradedPx         | **real**. The last-traded price for the instrument.          |
-| LastTradedQty        | **real**. The last-traded quantity for the instrument.       |
-| LastTradeTime        | **long integer**. The time of the last trade, in POSIX format. |
-| SessionOpen          | **real**. Opening price. In markets with openings and closings, this is the opening price for the current session; in 24-hour markets, it is the price as of UTC Midnight. |
-| SessionHigh          | **real**. Highest price during the trading day, either during a session with opening and closing prices or UTC midnight to UTC midnight. |
-| SessionLow           | **real**. Lowest price during the trading day, either during a session with opening and closing prices or UTC midnight to UTC midnight. |
-| SessionClose         | **real**. The closing price. In markets with openings and closings, this is the closing price for the current session; in 24-hour markets, it is the price as of UTC Midnight. |
-| Volume               | **real**. The last-traded quantity for the instrument, same value as LastTradedQty  |
-| CurrentDayVolume     | **real**. The unit volume of the instrument traded either during a session with openings and closings or in 24-hour markets, the period from UTC Midnight to UTC Midnight. |
-| CurrentDayNumTrades  | **integer**. The number of trades during the current day, either during a session with openings and closings or in 24-hour markets, the period from UTC Midnight to UTC Midnight. |
-| CurrentDayPxChange   | **real**. Current day price change, either during a trading session or UTC Midnight to UTC midnight. |
-| CurrentNotional            | **decimal.** Current day quote volume - resets at UTC Midnight. |
-| Rolling24HrNotional        | **decimal.** Rolling 24 hours quote volume. |
-| Rolling24HrVolume    | **real**. Unit volume of the instrument during the past 24 hours, regardless of time zone. Recalculates continuously. |
-| Rolling24HrNumTrades | **integer**. Number of trades during the past 24 hours, regardless of time zone. Recalculates continuously. |
-| Rolling24HrPxChange  | **real**. Price change during the past 24 hours, regardless of time zone. Recalculates continuously. |
-| TimeStamp            | **long integer**. The time this information was provided, in POSIX format.   |
+| Security           | **string**. The trading pair being subscribed to. |
+| Price              | **string**. The price of the order.           |
+| Qty                | **string**. The size of the order.       |
+| Time               | **string**. The time of the order, in POSIX format.        |
 
-# Authentication 
 
-|oauth2|*OAuth 2.0*|
-|---|---| 
 
-|apiKey|*API Key*|
-|---|---| 
+# Authentication
 
-# /PET
-## ***POST*** 
+**Category:** Authentication<br />
+**Permissions:** Trading<br />
 
-**Summary:** Add a new pet to the store
+Once client establishes the web socket connection, the client has 30 seconds to complete the login process. Otherwise, the socket will be closed by MidChains.
 
-**Description:** 
+## CHALLENGE
+First client needs to send a challenge request to the system.
 
-### HTTP Request 
-`***POST*** /pet` 
+### Response
 
-**Parameters**
+| Key               | Value                                                        |
+| -------------------- | ------------------------------------------------------------ |
+| Key                  | **string**. The trading pair being subscribed to. |
 
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-| body | body | Pet object that needs to be added to the store | Yes |  |
+> Request
 
-**Responses**
+```python
 
-| Code | Description |
-| ---- | ----------- |
-| 405 | Invalid input |
+   {
+      "type": "challenge"
+   }
 
-## ***PUT*** 
+```
 
-**Summary:** Update an existing pet
+> Response
 
-**Description:** 
+```python
 
-### HTTP Request 
-`***PUT*** /pet` 
+   {
+      "result":"OK",
+      "type":"challenge",
+      "key":"MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCvBXTe278Lwg2MoI7iGKolSYuF+sNFKrsZplxCN9x0kItU3KIf8+1q60ILLwLewCEf7foxzpWp32j9YYU9vNBghuJ7BHcDYTffTRcv+QdNno491j701Hq7DIw13AGCQQTRcnfclvblnytIEWoQsiUvPJcdiWgqJIX3IQGA47a+uwIDAQAB"
+   }
 
-**Parameters**
+```
 
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-| body | body | Pet object that needs to be added to the store | Yes |  |
 
-**Responses**
+The response contains a “key” field, which contains a public key string the client must use to encrypt the password field. The “key” field is a 64 base ASCII print out of the binary byte array for the corresponding public key of asymmetric public/ private key pair. MidChains will hold the private key while sending clients the public key. Client will first convert the ASCII back to binary byte array. Then use that binary byte array to create a “RSA” public key instance. Afterwards, client will use that RSA public key instance to encrypt info required in this order entry API, e.g. password encryption.
 
-| Code | Description |
-| ---- | ----------- |
-| 400 | Invalid ID supplied |
-| 404 | Pet not found |
-| 405 | Validation exception |
 
-# /PET/FINDBYSTATUS
-## ***GET*** 
+>  EXAMPLE.
 
-**Summary:** Finds Pets by status
+```java
 
-**Description:** Multiple status values can be provided with comma separated strings
+   byte[] array = javax.xml.bind.DatatypeConverter.parseBase64Binary(key);
+   KeyFactorykf = KeyFactory.getInstance(“RSA”);
+   publicKey = kf.generatePublic(new X509EncodedKeySpec(array));
+   Cipher = Cipher.getInstance(“RSA”);
+   cipher.init(Cipher.ENCRYPT_MODE, publicKey);
+   byte[] result = cipher.doFinal ("PASSWORD".getBytes(“UTF-8”));
+   String output = javax.xml.bind.DatatypeConverter.printBase64Binary(result);
 
-### HTTP Request 
-`***GET*** /pet/findByStatus` 
+```
 
-**Parameters**
+```python
 
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-| status | query | Status values that need to be considered for filter | Yes | array |
+    pubkey = f'-----BEGIN PUBLIC KEY-----\n'+key+'\n-----END PUBLIC KEY-----'
+    # encryption
+    text = "PASSWORD".encode('utf-8')
+    pub_bio = BIO.MemoryBuffer(pubkey.encode('utf-8'))
+    pub_rsa = RSA.load_pub_key_bio(pub_bio)
+    secret = pub_rsa.public_encrypt(text, RSA.pkcs1_padding)
+    sign = base64.b64encode(secret) 
+    sign = sign.decode("utf-8")
 
-**Responses**
+```
 
-| Code | Description |
-| ---- | ----------- |
-| 200 | successful operation |
-| 400 | Invalid status value |
+## LOGIN
 
-# /PET/FINDBYTAGS
-## ***GET*** 
+After encryption of password, the next step is to send in the login request. The string in the “pass” field is from the output result in sample above.
 
-**Summary:** Finds Pets by tags
+| Key               | Value                                                        | Required |
+| -------------------- | ------------------------------------------------------------ | ----- |
+| Userid                  | **string**. The username of the user. | Yes |
+| pass                  | **string**. The pass phrase generated from the challenge and steps above. | Yes |
 
-**Description:** Muliple tags can be provided with comma separated strings. Use         tag1, tag2, tag3 for testing.
+### Response
 
-### HTTP Request 
-`***GET*** /pet/findByTags` 
+| Key               | Value                                                        |
+| -------------------- | ------------------------------------------------------------ |
+| Result                  | **string**. The reposne will either contain OK if successful or a rejection reason. |
 
-**Parameters**
+MidChains will send current open orders and position info upon login. If a user places a new order, MidChains will send an order update automatically. If the user trades, they will receive a trade update and corresponding position updates.
 
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-| tags | query | Tags to filter by | Yes | array |
 
-**Responses**
+> Request
 
-| Code | Description |
-| ---- | ----------- |
-| 200 | successful operation |
-| 400 | Invalid tag value |
-
-# /PET/{PETID}
-## ***GET*** 
-
-**Summary:** Find pet by ID
-
-**Description:** Returns a single pet
-
-### HTTP Request 
-`***GET*** /pet/{petId}` 
-
-**Parameters**
-
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-| petId | path | ID of pet to return | Yes | long |
-
-**Responses**
-
-| Code | Description |
-| ---- | ----------- |
-| 200 | successful operation |
-| 400 | Invalid ID supplied |
-| 404 | Pet not found |
-
-## ***POST*** 
-
-**Summary:** Updates a pet in the store with form data
-
-**Description:** 
-
-### HTTP Request 
-`***POST*** /pet/{petId}` 
-
-**Parameters**
-
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-| petId | path | ID of pet that needs to be updated | Yes | long |
-| name | formData | Updated name of the pet | No | string |
-| status | formData | Updated status of the pet | No | string |
-
-**Responses**
-
-| Code | Description |
-| ---- | ----------- |
-| 405 | Invalid input |
-
-## ***DELETE*** 
-
-**Summary:** Deletes a pet
-
-**Description:** 
-
-### HTTP Request 
-`***DELETE*** /pet/{petId}` 
-
-**Parameters**
-
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-| api_key | header |  | No | string |
-| petId | path | Pet id to delete | Yes | long |
-
-**Responses**
-
-| Code | Description |
-| ---- | ----------- |
-| 400 | Invalid ID supplied |
-| 404 | Pet not found |
-
-# /PET/{PETID}/UPLOADIMAGE
-## ***POST*** 
-
-**Summary:** uploads an image
-
-**Description:** 
-
-### HTTP Request 
-`***POST*** /pet/{petId}/uploadImage` 
-
-**Parameters**
-
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-| petId | path | ID of pet to update | Yes | long |
-| additionalMetadata | formData | Additional data to pass to server | No | string |
-| file | formData | file to upload | No | file |
-
-**Responses**
-
-| Code | Description |
-| ---- | ----------- |
-| 200 | successful operation |
-
-# /STORE/INVENTORY
-## ***GET*** 
-
-**Summary:** Returns pet inventories by status
-
-**Description:** Returns a map of status codes to quantities
-
-### HTTP Request 
-`***GET*** /store/inventory` 
-
-**Parameters**
-
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-
-**Responses**
-
-| Code | Description |
-| ---- | ----------- |
-| 200 | successful operation |
-
-# /STORE/ORDER
-## ***POST*** 
-
-**Summary:** Place an order for a pet
-
-**Description:** 
-
-### HTTP Request 
-`***POST*** /store/order` 
-
-**Parameters**
-
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-| body | body | order placed for purchasing the pet | Yes |  |
-
-**Responses**
-
-| Code | Description |
-| ---- | ----------- |
-| 200 | successful operation |
-| 400 | Invalid Order |
-
-# /STORE/ORDER/{ORDERID}
-## ***GET*** 
-
-**Summary:** Find purchase order by ID
-
-**Description:** For valid response try integer IDs with value >= 1 and <= 10.         Other values will generated exceptions
-
-### HTTP Request 
-`***GET*** /store/order/{orderId}` 
-
-**Parameters**
-
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-| orderId | path | ID of pet that needs to be fetched | Yes | long |
-
-**Responses**
-
-| Code | Description |
-| ---- | ----------- |
-| 200 | successful operation |
-| 400 | Invalid ID supplied |
-| 404 | Order not found |
-
-## ***DELETE*** 
-
-**Summary:** Delete purchase order by ID
-
-**Description:** For valid response try integer IDs with positive integer value.         Negative or non-integer values will generate API errors
-
-### HTTP Request 
-`***DELETE*** /store/order/{orderId}` 
-
-**Parameters**
-
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-| orderId | path | ID of the order that needs to be deleted | Yes | long |
-
-**Responses**
-
-| Code | Description |
-| ---- | ----------- |
-| 400 | Invalid ID supplied |
-| 404 | Order not found |
-
-# /USER
-## ***POST*** 
-
-**Summary:** Create user
-
-**Description:** This can only be done by the logged in user.
-
-### HTTP Request 
-`***POST*** /user` 
-
-**Parameters**
-
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-| body | body | Created user object | Yes |  |
-
-**Responses**
-
-| Code | Description |
-| ---- | ----------- |
-| default | successful operation |
-
-# /USER/CREATEWITHARRAY
-## ***POST*** 
-
-**Summary:** Creates list of users with given input array
-
-**Description:** 
-
-### HTTP Request 
-`***POST*** /user/createWithArray` 
-
-**Parameters**
-
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-| body | body | List of user object | Yes |  |
-
-**Responses**
-
-| Code | Description |
-| ---- | ----------- |
-| default | successful operation |
-
-# /USER/CREATEWITHLIST
-## ***POST*** 
-
-**Summary:** Creates list of users with given input array
-
-**Description:** 
-
-### HTTP Request 
-`***POST*** /user/createWithList` 
-
-**Parameters**
-
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-| body | body | List of user object | Yes |  |
-
-**Responses**
-
-| Code | Description |
-| ---- | ----------- |
-| default | successful operation |
-
-# /USER/LOGIN
-## ***GET*** 
-
-**Summary:** Logs user into the system
-
-**Description:** 
-
-### HTTP Request 
-`***GET*** /user/login` 
-
-**Parameters**
-
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-| username | query | The user name for login | Yes | string |
-| password | query | The password for login in clear text | Yes | string |
-
-**Responses**
-
-| Code | Description |
-| ---- | ----------- |
-| 200 | successful operation |
-| 400 | Invalid username/password supplied |
-
-# /USER/LOGOUT
-## ***GET*** 
-
-**Summary:** Logs out current logged in user session
-
-**Description:** 
-
-### HTTP Request 
-`***GET*** /user/logout` 
-
-**Parameters**
-
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-
-**Responses**
-
-| Code | Description |
-| ---- | ----------- |
-| default | successful operation |
-
-# /USER/{USERNAME}
-## ***GET*** 
-
-**Summary:** Get user by user name
-
-**Description:** 
-
-### HTTP Request 
-`***GET*** /user/{username}` 
-
-**Parameters**
-
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-| username | path | The name that needs to be fetched. Use user1 for testing.  | Yes | string |
-
-**Responses**
-
-| Code | Description |
-| ---- | ----------- |
-| 200 | successful operation |
-| 400 | Invalid username supplied |
-| 404 | User not found |
-
-## ***PUT*** 
-
-**Summary:** Updated user
-
-**Description:** This can only be done by the logged in user.
-
-### HTTP Request 
-`***PUT*** /user/{username}` 
-
-**Parameters**
-
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-| username | path | name that need to be updated | Yes | string |
-| body | body | Updated user object | Yes |  |
-
-**Responses**
-
-| Code | Description |
-| ---- | ----------- |
-| 400 | Invalid user supplied |
-| 404 | User not found |
-
-## ***DELETE*** 
-
-**Summary:** Delete user
-
-**Description:** This can only be done by the logged in user.
-
-### HTTP Request 
-`***DELETE*** /user/{username}` 
-
-**Parameters**
-
-| Name | Located in | Description | Required | Type |
-| ---- | ---------- | ----------- | -------- | ---- |
-| username | path | The name that needs to be deleted | Yes | string |
-
-**Responses**
-
-| Code | Description |
-| ---- | ----------- |
-| 400 | Invalid username supplied |
-| 404 | User not found |
-
-<!-- Converted with the swagger-to-slate https://github.com/lavkumarv/swagger-to-slate -->
+```python
+   {
+      "type":"login",
+      "userid":"USERNAME",
+      "pass":"s7UW26iGE/iVfk2ihPYIcyzRqZRi/Ztb23UNMomf3xrBzGKUHKzfNwZe5PIR/0zvfevYvkJnKLQVhR4U9/kObD/Ir0z6mBfLLgFwEcRm08jYI/nk7lDU+W32PqduTOCThlkXYueQslK54vR9rKvMs="
+   }
+```
+
+> Response
+
+```python
+   {
+      "result":"OK",
+      "type":"login"
+   }
+   or
+   {
+      "result":"invalid user/password",
+      "type":"login"
+   }
+```
+
+
+## LOGOUT
+
+> Request
+
+```python
+   {
+      "type":"logout",
+   }
+```
+
+> Response
+
+```python
+   {
+      "result":"OK",
+      "type":"logout"
+   }
+```
+
+This is for clean logout. Once MidChains receives this message, it will immediately terminate the web socket connection.
+
+
+# Order Placement
+
+**Category:** Trading<br />
+**Permissions:** Trading<br />
+
+You can place two types of orders: limit and market. Orders can only be placed if your account has sufficient funds.
+
+## ADDORDER
+You can place two types of orders: limit and market. Orders can only be placed if your account has sufficient funds.
+
+| Key                | Value                                  | Required |
+| -----------------  | ----------------------------------- | -------- |
+| Security           | **string**. The trading pair you wish to place the order in. | Yes |
+| Side               | **string**. The order side. Options are buy 'B' or sell 'S'. | Yes |
+| Qty                | **string**. Specify the quantity of order. Required for all orders except market buy orders. | Conditionally |
+| Price              | **string**. Specify the order price. Required for limit orders | Conditionally |
+| Amount             | **string**. Specify the amount in fiat for the order. Required for market buy orders. | Conditionally |
+| Ordertype          | **string**. Specify if sending a limit or market order. Options are 'LMT' or 'MKT'. Default is 'LMT'.
+| TIF                | **string**. Options are GTC, IOC, FOK, GTT. GTC is the default | No |
+| Stoptype           | **string**. Used to place a stop limit ot stop market order by setiing value to 'STOP'. Default is not set. | No |
+| Stopprice          | **string**. Specifiy the stop price if stop type is set. | Conditionally |
+| Exptime            | **string**. The expiry time of the order, in POSIX format. Required if TIF is set to GTT| Conditionally |
+
+> Request
+
+```python
+
+   {
+      "type":"addorder",
+      "security":"LTCUSD",
+      "side":"B",
+      "ordertype":"MKT",
+      "tif":"IOC",
+      "amount":"180"
+   }
+
+```
+
+> Response
+
+```python
+
+   {
+      "result":"OK",
+      "tif":"IOC",
+      "ordertype":"MKT"
+      "refno":"5Z451OTIU191C3",
+      "security":"LTCUSD",
+      "side":"B",
+      "amount":"180",
+      "type":"addorder",
+   }
+   or
+   {
+      "result":"cannot use qty for market buy order",
+      "tif":"IOC",
+      "ordertype":"MKT"
+      "security":"LTCUSD",
+      "side":"B",
+      "qty":"180",
+      "type":"addorder",
+   } 
+```
+
+## CANCELORDER
+To cancel an open order, you can use the cancelorder endpoint. You must pass the MidChains assigned 'refno' to specify what order to cancel.
+
+| Key                | Value                                  | Required |
+| -----------------  | ----------------------------------- | -------- |
+| Security           | **string**. The trading pair you wish to cancel the order for. | Yes |
+| Refno               | **string**. The MidChains generated order id. | Yes |
+
+
+> Request
+
+```python
+
+   {
+      "type":"cancelorder",
+      "security":"BTCUSD",
+      "refno":"5FSDIAGCE768A0"
+   }
+
+```
+
+> Response
+
+```python
+
+   {
+      "result":"OK",
+      "refno":"5FSDIAGCE768A0",
+      "security":"BTCUSD",
+      "type":"cancelorder"
+   }
+   or
+   {
+      "result":"order not found",
+      "refno":"5FSDIAGCE768A0",
+      "security":"BTCUSD",
+      "type":"cancelorder"
+   }
+
+
+```
+
+# Order & Trade Query
+
+**Category:** Trading<br />
+**Permissions:** Trading<br />
+
+Users can retrieve open and executed order information.
+
+## QUERYORDER
+Users can retrieve open and executed order information.
+
+| Key                | Value                                  | Required |
+| -----------------  | ----------------------------------- | -------- |
+| Security           | **string**. The trading pair you wish to query orders for. | Yes |
+| Refno               | **string**. The MidChains generated order id. | Yes |
+
+### RESPONSE
+
+| Key                | Value                                  | Required |
+| -----------------  | ----------------------------------- | -------- |
+| Updtime           | **string**. Time of the last order update, in POSIX format. | - |
+| TIF               | **string**. The order's time in force. | - |
+| Execamount        | **string**. The amount of the order that has executed in fiat value. | - |
+| Qty               | **string**. The order's original quantity. | - |
+| Security          | **string**. The trading pair. | - |
+| Liveqty           | **string**. The order's remaining open quantity. | - |
+| Refno             | **string**. The MidChains generated order id. | - |
+| Execqty           | **string**. The order quantity that has been executed. | - |
+| Side              | **string**. The order side | - |
+
+
+> Request
+
+```python
+
+   {
+      "type":"queryorder",
+      "security":"LTCUSD",
+      "refno":"5GS08WTIE8CWA0"
+   }
+
+```
+
+> Response
+
+```python
+
+   {
+      "result":"OK",
+      "refno":"5GS08WTIE8CWA0",
+      "data": {
+         "updtime":"1557505235085",
+         "tif":"GTC",
+         "execamount":"10000",
+         "qty":"1000",
+         "security":"BTCUSD",
+         "type":"order",
+         "clientorderid":"ID1",
+         "liveqty":"900",
+         "category":"CROX",
+         "refno":"5GS08WTIE8CWA0",
+         "price":"100",
+         "execqty":"100",
+         "side":"S"
+      },
+      "security":"BTCUSD",
+      "type":"queryorder"
+   }
+   or
+   {
+      "result":"order not found",
+      "refno":"5GS08WTIE8CWA0",
+      "security":"BTCUSD",
+      "type":"queryorder"
+   } 
+
+```
+
+## QUERYMULTIORDERS
+Users can retrieve open and executed order information.
+
+| Key                | Value                                  | Required |
+| -----------------  | ----------------------------------- | -------- |
+| Security           | **string**. The trading pair you wish to query orders for. | No |
+| Fromtime           | **string**. Specify the cut off time in POSIX format. | No |
+
+### RESPONSE
+
+| Key                | Value                                  | Required |
+| -----------------  | ----------------------------------- | -------- |
+| Updtime           | **string**. Time of the last order update, in POSIX format. | - |
+| TIF               | **string**. The order's time in force. | - |
+| Execamount        | **string**. The amount of the order that has executed in fiat value. | - |
+| Qty               | **string**. The order's original quantity. | - |
+| Security          | **string**. The trading pair. | - |
+| Liveqty           | **string**. The order's remaining open quantity. | - |
+| Refno             | **string**. The MidChains generated order id. | - |
+| Execqty           | **string**. The order quantity that has been executed. | - |
+| Side              | **string**. The order side | - |
+
+
+> Request
+
+```python
+
+   {
+      "type":"querymultiorder",
+      "security":"LTCUSD",
+      "refno":"5GS08WTIE8CWA0"
+   }
+
+```
+
+> Response
+
+```python
+
+   {
+      "result":"OK",
+      "data": [
+         {
+            "updtime":"1562593041099",
+            "liveqty":"0",
+            "refno":"5IF6Q7Y8LI8WA0",
+            "category":"STAGE",
+            "execqty":"0",
+            "price":"100.59",
+            "side":"B",
+            "execamount":"0",
+            "qty":"100",
+            "rec_no":1,
+            "security":"ZVZZT",
+            "type":"order"
+         },
+         {
+            "updtime":"1562593042339",
+            "liveqty":"0",
+            "refno":"5IF6Q7Y8LGPKA7",
+            "category":"STAGE",
+            "execqty":"0",
+            "price":"100.58",
+            "side":"B",
+            "execamount":"0",
+            "qty":"100",
+            "rec_no":2,
+            "security":"ZVZZT",
+            "type":"order"
+         },
+         {
+            "updtime":"1562593042339",
+            "liveqty":"0",
+            "refno":"5IF6Q7Y8LGPJA7",
+            "category":"STAGE",
+            "execqty":"0",
+            "price":"100.57",
+            "side":"B",
+            "execamount":"0",
+            "qty":"100",
+            "rec_no":3,
+            "security":"ZVZZT",
+            "type":"order"
+         }
+      ]
+      "type":"querymultiorders",
+      "total_rec":3
+   }
+
+   or
+   {
+      "result":"OK",
+      "type":"querymultiorders",
+      "total_rec":0
+   }
+
+
+```
+
+## QUERYTRADE
+This is to query the trades for a user. 
+
+
+| Key                | Value                                  | Required |
+| -----------------  | ----------------------------------- | -------- |
+| Security           | **string**. The trading pair you wish to query trades for. | No |
+| Fromtime           | **string**. Specify the cut off time in POSIX format. | No |
+
+### RESPONSE
+
+“total_rec” tells you how many records there are available.
+
+If there are more than 100 records, the system will send you multiple response, each will have 100 records.
+
+| Key                | Value                                  | Required |
+| -----------------  | ----------------------------------- | -------- |
+| Trdtime           | **string**. The execution time, in POSIX format. | - |
+| Execprice         | **string**. The execution price of the trade. | - 
+| Security          | **string**. The trading pair. | - |
+| Refno             | **string**. The MidChains generated order id. | - |
+| Traderefno        | **string**. The MidChains generated execution id. | - |
+| Execqty           | **string**. The order quantity that has been executed. | - |
+| Rec_no            | **string**. The record number of the response. | - |
+| Side              | **string**. The order side | - |
+
+
+> Request
+
+```python
+
+   {
+      "type":"querytrade",
+      "security":"LTCUSD",
+      "fromtime":"1557323619303"
+   }
+
+```
+
+> Response
+
+```python
+
+   {
+      "result":"OK",
+      "data":[
+         {
+            "refno":"5GQBE9BCZOO0A3",
+            "category":"CROX",
+            "execqty":"10",
+            "execprice":"30",
+            "traderefno":"5GQBE9BCZOO0A32_5GQBE9BCZOO2",
+            "side":"B",
+            "trdtime":"1557323619303",
+            "rec_no":1,
+            "security":"MSFT",
+            "type":"sale"
+         },
+         {
+            "refno":"5GQBE9BCZN4GA7",
+            "category":"CROX",
+            "execqty":"10",
+            "execprice":"100.5",
+            "traderefno":"5GQBE9BCZN4GA72_5GQBE9BCZN4I",
+            "side":"B",
+            "trdtime":"1557323603427",
+            "rec_no":2,
+            "security":"ZVZZT",
+            "type":"sale"
+         }
+      ],
+      "type":"querytrade",
+      "total_rec":2
+   }
+   or
+   {
+      "result":"OK",
+      "userid":"0003",
+      "type":"querytrade",
+      "total_rec":0
+   }
+
+```
+
+# Account Balances
+
+**Category:** Balances and Positions<br />
+**Permissions:** Trading<br />
+
+Users can receive balance information / positions and continuous updates afterwards.
+
+## QUERYPOS
+Users can receive balance information / positions and continuous updates afterwards.
+
+| Key                | Value                                  | Required |
+| -----------------  | ----------------------------------- | -------- |
+| Security           | **string**. The virtual asset or currency to query for. | No |
+
+### RESPONSE
+
+| Key                | Value                                  | Required |
+| -----------------  | ----------------------------------- | -------- |
+| Curpos           | **string**. The amount of that Virtual Asset or Viat in the users balance | - |
+| Security          | **string**. The virtual asset or currency to query for. | - |
+
+
+> Request
+
+```python
+
+   {
+      "type":"querypos",
+      "security":"LTC"
+   }
+
+```
+
+> Response
+
+```python
+
+   {
+      "result":"OK",
+      "firm":"MIDC",
+      "data": [
+         {
+            "curpos":"300",
+            "rec_no":1,
+            "security":"LTC",
+            "type":"position"
+         },
+         {
+            "curpos":"300",
+            "rec_no":2,
+            "security":"USD",
+            "type":"position"
+         }
+      ],
+      "userid":"JOHNUSER",
+      "type":"querypos",
+      "total_rec":2
+   }
+   or
+   {
+      "result":"no position",
+      "type":"querypos"
+   } 
+
+```
+
+# &nbsp;
+
+# FIX API
+
+## Overview
+The information in MidChains FIX API specification describes the adaptation of the standard FIX 4.2 for vendors and subscribers to communicate with the MidChains quotation and execution platform. FIX 4.2 tags, as described in detail on the Financial Information Exchange Protocol Committee website, www.fixprotocol.org as well as custom tags are used extensively in this document and the reader should familiarize themselves with the latest updates to this release. If an application message in Financial Information Exchange Protocol version 4.2, or previous FIX versions, is not included in this document, the message is ignored.
+
+## Connectivity
+To connect to MidChains over th FIX API clients must establish a secure connection to the FIX gateway. The connectivity details such as the IP Address and Port Number will be assigned by the MidChains trade operations team. To request these details, clients can contact support@midchains.com or raise a request via the support portal through the www.midchains.com website.
+
+# Message Types
+## Application Messages – User to MidChains
+### New Order – Single (MsgType = D)
+### Order Cancel Request (MsgType = F)
+### Order Cancel/Replace Request (MsgType = G)
+## Application Messages – MidChains to User
+### Execution Report (MsgType = 8)
+### Order Cancel Reject (MsgType = 9)
+## Administrative Messages
+### Heartbeat (MsgType = 0)
+### Logon (MsgType = A)
+### Test Request (MsgType = 1)
+### Resend Request (MsgType = 2)
+### Reject (Msg Type = 3)
+### Sequence Reset (MsgType = 4)
+
+# Message Header
+This section outlines the FIX messages, how they are supported, and to what extent the business data is translated within the FIX Gateway.
+
+| Tag  | Field Name              | Required  | Note |
+| ---- | ----------------------- | --------  | ---- |
+| 8    | BeginString             | Yes       | FIX.4.2 |
+| 9    | BodyLength              | Yes       |      |
+| 35    | MsgType               | Yes       |      |
+| 49    | SenderCompID              | Yes       | Provided by MidChains |
+| 49    | TargetCompID              | Yes       | Provided by MidChains |
+| 34    | MsgSeqNum             | Yes       |      |
+| 52    | SendingTime              | Yes       |      |
+
+
+# Message Trailer
+
+| Tag  | Field Name              | Required  | Note |
+| ---- | ----------------------- | --------  | ---- |
+| 10    | CheckSum             | Yes       |  |
+
+
+# Login (MsgType = A)
+The logon message identifies and authenticates the user or member and establishes a connection to the FIX Gateway. 
+The FIX gateway accepts Logon messages as per the FIX specification. Further, the FIX gateway supports the logon sequence required for session authentication. 
+After a successful logon as described in the specification the FIX gateway will: 
+Initiate retransmission processing via a resend request if the Logon sequence number is greater than the value expected
+Initiate logout processing via a Logout message with an appropriate error message, then waits for a confirming Logout before disconnecting if the Logon sequence number is less than expected. If the confirming Logout has not been received within a short period of time the session will be disconnected.
+Handle retransmission requests.
+Initiate a Logon using the SenderCompID in the message header.
+Will forwarded to the FIX client messages that are waiting in the outbound queue
+Begin regular message communication.
+
+| Tag  | Field Name              | Required  | Note |
+| ---- | ----------------------- | --------  | ---- |
+|     | Standard Header             | Yes       |  |
+| 108    | HeartBtInt             | Yes       |  |
+|     | Standard Trailer             | Yes       |  |
+
+# Logout (MsgType = 5)
+The Logout message initiates or confirms the termination of a FIX session. 
+
+The FIX gateway will receive and generate logout messages as required by the FIX Protocol. The gateway follows the prescribed sequence of messages for the proper termination of the session. 
+Messages received by the gateway after the client logs out are stored in a log file for transmission to the client once the client logs in again within the same trading day. The messages to be transmitted are dependent on the sequence number reconciliation that occurs on a logon handshake. 
+
+Upon receipt of a Logout message: 
+<br/>
+1. A confirming logout message will be sent by the gateway to the client; then,
+<br/>
+2. The session will be disconnected. The FIX gateway should never initiate a logoff except when a severe error has occurred.
+
+| Tag  | Field Name              | Required  | Note |
+| ---- | ----------------------- | --------  | ---- |
+|     | Standard Header             | Yes       |  |
+| 58    | Text             | No       | Free format text string (Note: this field does not have a specified maximum length) If the Logout message has been sent by the the FIX gateway, then this field will contain the text “Session closed”. |
+|     | Standard Trailer             | Yes       |  |
+
+
+# New Order - Single (MsgType = D)
+This message is used to submit an order to the trading system for processing.
+
+| Tag  | Field Name              | Required  | Note |
+| ---- | ----------------------- | --------  | ---- |
+|     | Standard Header             | Yes       |  |
+| 11    | ClOrdId             | Yes       | Unique identifier of the order. Must be unique for each session, max 32 chars. |
+| 1    | Account             | No       | Optional identifier from customer, will be passed back in Execution Report. |
+| 55    | Symbol             | Yes       | Common, “human understood” representation of the security, bitcoins US Dollar – BTCUSD, etc. |
+| 54    | Side           | Yes       | '1' = Buy '2' = Sell |
+| 38    | OrderQty           | Yes       | Size of the order. E.G. 10  |
+| 43229 | FractionBase             | Yes       | If FractionBase is 100 and OrderQty field = 1, that means the Order Qty sent to the platform is 0.01. |
+| 40    | OrdType             | Yes       | '1' = Market '2' = Limit |
+| 44    | Price             | No       | Required for limit Ordtypes  |
+| 59 | TimeInForce | No | '3' = IOC (Immediate-Or-Cancel) |
+| 126 | ExpireTime | No | Required if TimeInForce = GTT (UTC)
+|     | Standard Trailer             | Yes       |  |
+
+# Order Cancel Request (MsgType = F)
+
+| Tag  | Field Name              | Required  | Note |
+| ---- | ----------------------- | --------  | ---- |
+|     | Standard Header             | Yes       |  |
+| 41    | OrigClOrdId             | Yes       | ClOrdID of the previous order |
+| 37    | OrdId             | No       | Unique Identifier of order assigned by the platform. |
+| 11    | ClOrdId             | Yes       | Unique identifier of the order. Must be unique for each session, max 32 chars. |
+| 55    | Symbol             | Yes       | Common, “human understood” representation of the security, bitcoins US Dollar – BTCUSD, etc. |
+| 54    | Side           | Yes       | '1' = Buy '2' = Sell |
+| 38    | OrderQty           | Yes       | Size of the order. E.G. 10  |
+| 58 | Text             | No       |  |
+|     | Standard Trailer             | Yes       |  |
+
+
+# Order Cancel/Replace Request (MsgType = G)
+
+| Tag  | Field Name              | Required  | Note |
+| ---- | ----------------------- | --------  | ---- |
+|     | Standard Header             | Yes       |  |
+| 41    | OrigClOrdId             | Yes       | ClOrdID of the previous order |
+| 37    | OrdId             | No       | Unique Identifier of order assigned by the platform. |
+| 11    | ClOrdId             | Yes       | Unique identifier of the order. Must be unique for each session, max 32 chars. |
+| 1    | Account             | No       | Optional identifier from customer, will be passed back in Execution Report. |
+| 55    | Symbol             | Yes       | Common, “human understood” representation of the security, bitcoins US Dollar – BTCUSD, etc. |
+| 54    | Side           | Yes       | '1' = Buy '2' = Sell |
+| 38    | OrderQty           | Yes       | Size of the order. E.G. 10  |
+| 44    | Price             | No       | Required for limit Ordtypes  |
+| 59 | TimeInForce | No | '3' = IOC (Immediate-Or-Cancel) |
+| 126 | ExpireTime | No | Required if TimeInForce = GTT (UTC)
+|     | Standard Trailer             | Yes       |  |
+
+# &nbsp;
